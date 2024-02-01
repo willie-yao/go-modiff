@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"slices"
 	"sort"
 	"strings"
 
@@ -101,27 +102,43 @@ func diffModules(mods modules, addLinks bool, headerLevel uint) string {
 	var added, removed, changed []string
 	for name, mod := range mods {
 		txt := fmt.Sprintf("- %s: ", name)
+		splitLinkPrefix := strings.Split(mod.linkPrefix, "/")
+		prefixWithTree := fmt.Sprintf("%s/%s", mod.linkPrefix, "tree")
 		if mod.beforeVersion == "" { //nolint: gocritic
 			if addLinks && isGitHubURL(mod.linkPrefix) {
-				txt += fmt.Sprintf("[%s](%s/tree/%s)",
-					mod.afterVersion, toURL(mod.linkPrefix), sanitizeTag(mod.afterVersion))
+				// Insert the tree part of the URL at index 3 to account for tag names with slashes
+				if len(splitLinkPrefix) >= 3 {
+					prefixWithTree = strings.Join(slices.Insert(splitLinkPrefix, 3, "tree"), "/")
+				}
+				txt += fmt.Sprintf("[%s](%s/%s)",
+					mod.afterVersion, toURL(prefixWithTree), sanitizeTag(mod.afterVersion))
 			} else {
 				txt += mod.afterVersion
 			}
 			added = append(added, txt)
 		} else if mod.afterVersion == "" {
 			if addLinks && isGitHubURL(mod.linkPrefix) {
-				txt += fmt.Sprintf("[%s](%s/tree/%s)",
-					mod.beforeVersion, toURL(mod.linkPrefix), sanitizeTag(mod.beforeVersion))
+				if len(splitLinkPrefix) >= 3 {
+					prefixWithTree = strings.Join(slices.Insert(splitLinkPrefix, 3, "tree"), "/")
+				}
+				txt += fmt.Sprintf("[%s](%s/%s)",
+					mod.beforeVersion, toURL(prefixWithTree), sanitizeTag(mod.beforeVersion))
 			} else {
 				txt += mod.beforeVersion
 			}
 			removed = append(removed, txt)
 		} else if mod.beforeVersion != mod.afterVersion {
 			if addLinks && isGitHubURL(mod.linkPrefix) {
-				txt += fmt.Sprintf("[%s → %s](%s/compare/%s...%s)",
-					mod.beforeVersion, mod.afterVersion, toURL(mod.linkPrefix),
-					sanitizeTag(mod.beforeVersion), sanitizeTag(mod.afterVersion))
+				prefixWithCompare := fmt.Sprintf("%s/%s", mod.linkPrefix, "compare")
+				// Insert tag prefix to the afterVersion to account for tag names with slashes
+				afterVersion := sanitizeTag(mod.afterVersion)
+				if len(splitLinkPrefix) > 3 {
+					prefixWithCompare = strings.Join(slices.Insert(splitLinkPrefix, 3, "compare"), "/")
+					afterVersion = fmt.Sprintf("%s/%s", strings.Join(splitLinkPrefix[3:], "/"), afterVersion)
+				}
+				txt += fmt.Sprintf("[%s → %s](%s/%s...%s)",
+					mod.beforeVersion, mod.afterVersion, toURL(prefixWithCompare),
+					sanitizeTag(mod.beforeVersion), afterVersion)
 			} else {
 				txt += fmt.Sprintf("%s → %s", mod.beforeVersion, mod.afterVersion)
 			}
@@ -198,7 +215,7 @@ func getModules(workDir, from, to string) (modules, error) {
 			name := strings.TrimSpace(split[0])
 			linkPrefix := name
 			// Remove the module name from the link
-			if splitLink := strings.Split(linkPrefix, "/"); len(splitLink) > 3 {
+			if splitLink := strings.Split(linkPrefix, "/"); len(splitLink) == 4 {
 				linkPrefix = strings.Join(splitLink[:3], "/")
 			}
 			version := strings.TrimSpace(split[1])
