@@ -198,9 +198,8 @@ func getModules(workDir, from, to string) (modules, error) {
 			name := strings.TrimSpace(split[0])
 			linkPrefix := name
 			// Remove the module name from the link
-			if len(strings.Split(linkPrefix, "/")) > 3 {
-				lastInd := strings.LastIndex(linkPrefix, "/")
-				linkPrefix = linkPrefix[:lastInd]
+			if splitLink := strings.Split(linkPrefix, "/"); len(splitLink) > 3 {
+				linkPrefix = strings.Join(splitLink[:3], "/")
 			}
 			version := strings.TrimSpace(split[1])
 
