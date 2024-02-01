@@ -12,12 +12,13 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-type versions struct {
-	before string
-	after  string
+type entry struct {
+	beforeVersion string
+	afterVersion  string
+	linkPrefix    string
 }
 
-type modules = map[string]versions
+type modules = map[string]entry
 
 // Config is the structure passed to `Run`
 type Config struct {
@@ -100,29 +101,29 @@ func diffModules(mods modules, addLinks bool, headerLevel uint) string {
 	var added, removed, changed []string
 	for name, mod := range mods {
 		txt := fmt.Sprintf("- %s: ", name)
-		if mod.before == "" { //nolint: gocritic
-			if addLinks && isGitHubURL(name) {
+		if mod.beforeVersion == "" { //nolint: gocritic
+			if addLinks && isGitHubURL(mod.linkPrefix) {
 				txt += fmt.Sprintf("[%s](%s/tree/%s)",
-					mod.after, toURL(name), sanitizeTag(mod.after))
+					mod.afterVersion, toURL(mod.linkPrefix), sanitizeTag(mod.afterVersion))
 			} else {
-				txt += mod.after
+				txt += mod.afterVersion
 			}
 			added = append(added, txt)
-		} else if mod.after == "" {
-			if addLinks && isGitHubURL(name) {
+		} else if mod.afterVersion == "" {
+			if addLinks && isGitHubURL(mod.linkPrefix) {
 				txt += fmt.Sprintf("[%s](%s/tree/%s)",
-					mod.before, toURL(name), sanitizeTag(mod.before))
+					mod.beforeVersion, toURL(mod.linkPrefix), sanitizeTag(mod.beforeVersion))
 			} else {
-				txt += mod.before
+				txt += mod.beforeVersion
 			}
 			removed = append(removed, txt)
-		} else if mod.before != mod.after {
-			if addLinks && isGitHubURL(name) {
+		} else if mod.beforeVersion != mod.afterVersion {
+			if addLinks && isGitHubURL(mod.linkPrefix) {
 				txt += fmt.Sprintf("[%s → %s](%s/compare/%s...%s)",
-					mod.before, mod.after, toURL(name),
-					sanitizeTag(mod.before), sanitizeTag(mod.after))
+					mod.beforeVersion, mod.afterVersion, toURL(mod.linkPrefix),
+					sanitizeTag(mod.beforeVersion), sanitizeTag(mod.afterVersion))
 			} else {
-				txt += fmt.Sprintf("%s → %s", mod.before, mod.after)
+				txt += fmt.Sprintf("%s → %s", mod.beforeVersion, mod.afterVersion)
 			}
 			changed = append(changed, txt)
 		}
@@ -172,7 +173,7 @@ func getModules(workDir, from, to string) (modules, error) {
 
 	// Parse the modules
 	res := modules{}
-	forEach := func(input string, do func(res *versions, version string)) {
+	forEach := func(input string, do func(res *entry, version string)) {
 		scanner := bufio.NewScanner(strings.NewReader(input))
 		for scanner.Scan() {
 			// Skip version-less modules, like the local one
@@ -195,10 +196,11 @@ func getModules(workDir, from, to string) (modules, error) {
 			}
 
 			name := strings.TrimSpace(split[0])
+			linkPrefix := name
 			// Remove the module name from the link
-			if len(strings.Split(name, "/")) > 3 {
-				lastInd := strings.LastIndex(name, "/")
-				name = name[:lastInd]
+			if len(strings.Split(linkPrefix, "/")) > 3 {
+				lastInd := strings.LastIndex(linkPrefix, "/")
+				linkPrefix = linkPrefix[:lastInd]
 			}
 			version := strings.TrimSpace(split[1])
 
@@ -216,16 +218,17 @@ func getModules(workDir, from, to string) (modules, error) {
 			}
 
 			// Process the entry
-			entry := &versions{}
+			entry := &entry{}
 			if val, ok := res[name]; ok {
 				entry = &val
 			}
 			do(entry, version)
+			entry.linkPrefix = linkPrefix
 			res[name] = *entry
 		}
 	}
-	forEach(before, func(res *versions, v string) { res.before = v })
-	forEach(after, func(res *versions, v string) { res.after = v })
+	forEach(before, func(res *entry, v string) { res.beforeVersion = v })
+	forEach(after, func(res *entry, v string) { res.afterVersion = v })
 
 	logrus.Infof("%d modules found", len(res))
 
